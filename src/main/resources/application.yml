@@ -1,0 +1,99 @@
+spring:
+  application:
+    name: ft-origins
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/football_origins
+    username: postgres
+    password: postgres
+    hikari:
+      maximum-pool-size: 20
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_batch_fetch_size: 20
+        format_sql: false
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migrations
+    baseline-on-migrate: false
+
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8080
+
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:dev-secret-key-change-in-production-must-be-at-least-64-bytes-long-0123456789}
+      issuer: footballorigins-api
+      access-token-expiration-ms: 900000        # 15 minutes
+      refresh-token-expiration-ms: 5184000000   # 60 days (sliding: resets on every refresh)
+    cors:
+      allowed-origins:
+        - http://localhost:8081
+        - http://localhost:19006
+        - https://footballorigins.app
+      allowed-methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      allowed-headers:
+        - Authorization
+        - Content-Type
+        - Accept
+        - Origin
+        - X-Requested-With
+      exposed-headers:
+        - Authorization
+      allow-credentials: true
+      max-age: 3600
+
+  geo:
+    h3-resolution: 8
+    # GeoNames reference data (reverse-geocode pin -> country/city labels).
+    # Default path is relative to the working dir (= project root when run from IntelliJ/Gradle).
+    # Override with the env var to point elsewhere (e.g. an absolute path).
+    countries-file: ${GEO_COUNTRIES_FILE:geo-data/countryInfo.txt}   # GeoNames countryInfo.txt; empty = skip load
+    cities-file: ${GEO_CITIES_FILE:geo-data/cities1000.txt}          # GeoNames cities1000.txt; empty = skip load (offline fallback)
+
+    # OSM/Nominatim reverse-geocode → neighborhood (semt/mahalle) + district + city labels.
+    # Called once per brand-new H3 cell (registration only) → low volume. On failure we fall back
+    # to the GeoNames nearest-city above. Public server allows ~1 req/s and REQUIRES a real User-Agent
+    # with contact info; for production scale point the url at a self-hosted / paid instance.
+    nominatim:
+      enabled: ${NOMINATIM_ENABLED:true}
+      url: ${NOMINATIM_URL:https://nominatim.openstreetmap.org}
+      user-agent: '${NOMINATIM_USER_AGENT:ft-origins/1.0 (contact bdurak3@gmail.com)}'
+      language: ${NOMINATIM_LANGUAGE:en}   # place-name language; set to 'tr' for Turkish names
+
+  team:
+    # Players registering within this radius (km) of an existing team's anchor join that team,
+    # instead of getting split by H3 grid boundaries. Lower = more local teams; higher = wider catchment.
+    join-radius-km: ${TEAM_JOIN_RADIUS_KM:1.0}
+    # Team capacity: full teams are skipped at join time (next-nearest in range, else a new team).
+    # Matches are 5v5, so 8 leaves a bench.
+    max-members: ${TEAM_MAX_MEMBERS:8}
