@@ -2,149 +2,199 @@ package com.codewithbayramali.ftorigins.player.service;
 
 import com.codewithbayramali.ftorigins.exception.BusinessException;
 import com.codewithbayramali.ftorigins.exception.NotFoundException;
+import com.codewithbayramali.ftorigins.player.dto.AttributeChange;
+import com.codewithbayramali.ftorigins.player.dto.DrillCatalogResponse;
 import com.codewithbayramali.ftorigins.player.dto.TrainResult;
+import com.codewithbayramali.ftorigins.player.dto.TrainingStatus;
+import com.codewithbayramali.ftorigins.player.model.DrillEffect;
 import com.codewithbayramali.ftorigins.player.model.Player;
-import com.codewithbayramali.ftorigins.player.model.TrainableAttribute;
+import com.codewithbayramali.ftorigins.player.model.TrainingDrill;
 import com.codewithbayramali.ftorigins.player.repository.PlayerRepository;
+import com.codewithbayramali.ftorigins.player.repository.TrainingDrillRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
- * Player development. Fairness levers:
- *  - training costs energy that regenerates over time (caps how much you can grind per day),
- *  - attribute gains diminish as they approach a level-gated cap (max 95),
- *  - lower-level players earn XP faster (catch-up) so the gap to veterans stays bounded.
- * Match-performance XP (later) will feed the same {@link #grantXp} path.
+ * Timed training. A drill takes real time:
+ * <ul>
+ *   <li><b>START</b> spends energy up-front and opens a single active session (drill + finishesAt),</li>
+ *   <li><b>CLAIM</b> (after the duration) applies the stat gains,</li>
+ *   <li><b>CANCEL</b> abandons the session — no gain, but the spent energy is refunded.</li>
+ * </ul>
+ * Only one session at a time; energy does not regenerate while one is active (see {@link PlayerUpkeepService}).
+ * A high OVR is a long grind: diminishing returns + hard cap ({@link #ATTRIBUTE_CAP}) + hours-long
+ * sessions gate the rate; inactivity decay rewards consistency. The active session is also the "busy"
+ * state that the match system will check so training and matches never overlap.
  */
 @Service
 public class TrainingService {
 
-    static final int MAX_ENERGY = 100;
-    static final int ENERGY_REGEN_PER_HOUR = 10;
-    static final int TRAINING_ENERGY_COST = 20;
-    static final int BASE_TRAINING_GAIN = 3;
-    static final int ATTRIBUTE_FLOOR = 40;
-    static final int XP_PER_TRAINING = 10;
+    static final int ATTRIBUTE_CAP = 95;
+    static final int DIMINISH_FLOOR = 35;
 
     private final PlayerRepository playerRepository;
+    private final TrainingDrillRepository drillRepository;
+    private final PlayerUpkeepService upkeep;
 
-    public TrainingService(PlayerRepository playerRepository) {
+    public TrainingService(PlayerRepository playerRepository,
+                           TrainingDrillRepository drillRepository,
+                           PlayerUpkeepService upkeep) {
         this.playerRepository = playerRepository;
+        this.drillRepository = drillRepository;
+        this.upkeep = upkeep;
     }
 
+    /** The training screen's drill catalog (active drills, ordered). */
+    @Transactional(readOnly = true)
+    public List<DrillCatalogResponse> listDrills() {
+        return drillRepository.findActiveWithEffects().stream()
+                .map(DrillCatalogResponse::from)
+                .toList();
+    }
+
+    /** Current session (or idle). Applies lazy energy/decay upkeep first. */
     @Transactional
-    public TrainResult train(UUID userId, TrainableAttribute attribute) {
-        Player player = playerRepository.findByUserId(userId)
-                .orElseThrow(() -> new NotFoundException("PLAYER_NOT_FOUND", "No player profile for this account"));
+    public TrainingStatus status(UUID userId) {
+        Player player = requirePlayer(userId);
+        upkeep.refresh(player);
+        return statusOf(player, Instant.now());
+    }
 
-        regenerateEnergy(player);
+    /** Begin a timed training. Spends energy up-front; the gain lands on {@link #claim}. */
+    @Transactional
+    public TrainingStatus start(UUID userId, UUID drillId) {
+        Player player = requirePlayer(userId);
+        upkeep.refresh(player);
 
-        if (player.getEnergy() < TRAINING_ENERGY_COST) {
-            throw new BusinessException(HttpStatus.CONFLICT, "NO_ENERGY", "Not enough energy to train");
+        if (player.getActiveDrillId() != null) {
+            throw new BusinessException(HttpStatus.CONFLICT, "ALREADY_TRAINING",
+                    "Claim or cancel your current training first");
         }
 
-        int cap = attributeCap(player.getLevel());
-        int current = read(player, attribute);
-        if (current >= cap) {
+        TrainingDrill drill = drillRepository.findById(drillId)
+                .filter(TrainingDrill::getActive)
+                .orElseThrow(() -> new NotFoundException("DRILL_NOT_FOUND", "No such training drill"));
+
+        if (player.getEnergy() < drill.getEnergyCost()) {
+            throw new BusinessException(HttpStatus.CONFLICT, "NO_ENERGY", "Not enough energy to start this drill");
+        }
+        if (allMaxed(player, drill)) {
             throw new BusinessException(HttpStatus.CONFLICT, "ATTRIBUTE_CAPPED",
-                    "This attribute is capped for your level — level up to train it further");
+                    "Every attribute this drill trains is already maxed");
         }
 
-        int gain = computeGain(current, cap);
-        write(player, attribute, current + gain);
-        player.setEnergy(player.getEnergy() - TRAINING_ENERGY_COST);
-        grantXp(player, (int) Math.round(XP_PER_TRAINING * catchUpMultiplier(player.getLevel())));
+        Instant now = Instant.now();
+        player.setEnergy(player.getEnergy() - drill.getEnergyCost());
+        player.setActiveDrillId(drill.getId());
+        player.setTrainingStartedAt(now);
+        player.setTrainingFinishesAt(now.plus(Duration.ofSeconds(drill.getDurationSeconds())));
+        // Training counts as activity; freeze the energy clock (no regen while a session is active).
+        player.setEnergyUpdatedAt(now);
+        player.setLastTrainedAt(now);
+        player.setDecayUpdatedAt(now);
 
         playerRepository.save(player);
-
-        return new TrainResult(attribute.name(), gain, read(player, attribute),
-                player.getEnergy(), player.getLevel(), player.getXp());
+        return statusOf(player, now);
     }
 
-    /** Attribute ceiling grows with level, hard-capped so the field stays competitive. */
-    static int attributeCap(int level) {
-        return Math.min(95, 45 + level);
-    }
-
-    /** Diminishing returns: smaller gains as the attribute approaches its cap (always at least +1). */
-    static int computeGain(int current, int cap) {
-        int span = Math.max(1, cap - ATTRIBUTE_FLOOR);
-        int raw = (int) Math.round(BASE_TRAINING_GAIN * (double) (cap - current) / span);
-        return Math.max(1, Math.min(raw, cap - current));
-    }
-
-    /** Lower-level players gain XP faster so the gap to veterans does not explode. */
-    static double catchUpMultiplier(int level) {
-        return Math.max(1.0, 2.0 - 0.05 * level);
-    }
-
-    static int xpForNextLevel(int level) {
-        return 100 * level;
-    }
-
-    private void grantXp(Player player, int amount) {
-        int xp = player.getXp() + amount;
-        int level = player.getLevel();
-        while (xp >= xpForNextLevel(level)) {
-            xp -= xpForNextLevel(level);
-            level++;
+    /** Collect a finished training: applies the stat gains and clears the session. */
+    @Transactional
+    public TrainResult claim(UUID userId) {
+        Player player = requirePlayer(userId);
+        if (player.getActiveDrillId() == null) {
+            throw new BusinessException(HttpStatus.CONFLICT, "NO_ACTIVE_TRAINING", "You are not training");
         }
-        player.setXp(xp);
-        player.setLevel(level);
-    }
-
-    private void regenerateEnergy(Player player) {
         Instant now = Instant.now();
-        if (player.getEnergy() >= MAX_ENERGY) {
-            player.setEnergyUpdatedAt(now);
-            return;
+        if (player.getTrainingFinishesAt() != null && player.getTrainingFinishesAt().isAfter(now)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "TRAINING_NOT_FINISHED", "This training is not finished yet");
         }
-        long minutes = Duration.between(player.getEnergyUpdatedAt(), now).toMinutes();
-        if (minutes <= 0) {
-            return;
+
+        TrainingDrill drill = drillRepository.findById(player.getActiveDrillId())
+                .orElseThrow(() -> new NotFoundException("DRILL_NOT_FOUND", "Training drill no longer exists"));
+
+        List<AttributeChange> changes = new ArrayList<>();
+        for (DrillEffect effect : drill.getEffects()) {
+            int current = AttributeAccess.read(player, effect.getAttribute());
+            if (current >= ATTRIBUTE_CAP) {
+                continue;
+            }
+            int gain = computeGain(effect.getBaseGain(), current, ATTRIBUTE_CAP);
+            int updated = current + gain;
+            AttributeAccess.write(player, effect.getAttribute(), updated);
+            changes.add(new AttributeChange(effect.getAttribute().name(), gain, updated));
         }
-        int regen = (int) (minutes * ENERGY_REGEN_PER_HOUR / 60);
-        if (regen <= 0) {
-            return;
-        }
-        int newEnergy = Math.min(MAX_ENERGY, player.getEnergy() + regen);
-        if (newEnergy >= MAX_ENERGY) {
-            player.setEnergyUpdatedAt(now);
-        } else {
-            long consumedSeconds = Math.round(regen / (double) ENERGY_REGEN_PER_HOUR * 3600);
-            player.setEnergyUpdatedAt(player.getEnergyUpdatedAt().plusSeconds(consumedSeconds));
-        }
-        player.setEnergy(newEnergy);
+
+        clearSession(player, now);
+        playerRepository.save(player);
+        return new TrainResult(drill.getName(), changes, player.getEnergy());
     }
 
-    private int read(Player p, TrainableAttribute attribute) {
-        return switch (attribute) {
-            case PACE -> p.getPace();
-            case SHOOTING -> p.getShooting();
-            case PASSING -> p.getPassing();
-            case DRIBBLING -> p.getDribbling();
-            case DEFENDING -> p.getDefending();
-            case PHYSICAL -> p.getPhysical();
-            case GOALKEEPING -> p.getGoalkeeping();
-            case CURVE -> p.getCurve();
-        };
+    /** Abandon the active training — no gain; refunds the energy the start spent. Frees the player for a match. */
+    @Transactional
+    public TrainingStatus cancel(UUID userId) {
+        Player player = requirePlayer(userId);
+        if (player.getActiveDrillId() == null) {
+            throw new BusinessException(HttpStatus.CONFLICT, "NO_ACTIVE_TRAINING", "You are not training");
+        }
+        Instant now = Instant.now();
+        // No gain is awarded, so refund the energy the start spent — only the elapsed time is lost.
+        drillRepository.findById(player.getActiveDrillId()).ifPresent(drill ->
+                player.setEnergy(Math.min(PlayerUpkeepService.MAX_ENERGY,
+                        player.getEnergy() + drill.getEnergyCost())));
+        clearSession(player, now);
+        playerRepository.save(player);
+        return statusOf(player, now);
     }
 
-    private void write(Player p, TrainableAttribute attribute, int value) {
-        switch (attribute) {
-            case PACE -> p.setPace(value);
-            case SHOOTING -> p.setShooting(value);
-            case PASSING -> p.setPassing(value);
-            case DRIBBLING -> p.setDribbling(value);
-            case DEFENDING -> p.setDefending(value);
-            case PHYSICAL -> p.setPhysical(value);
-            case GOALKEEPING -> p.setGoalkeeping(value);
-            case CURVE -> p.setCurve(value);
+    // -- helpers ---------------------------------------------------------------
+
+    private Player requirePlayer(UUID userId) {
+        return playerRepository.findByUserId(userId)
+                .orElseThrow(() -> new NotFoundException("PLAYER_NOT_FOUND", "No player profile for this account"));
+    }
+
+    /** Clears the session and resumes the energy/decay clocks from now (no back-regen for the span). */
+    private void clearSession(Player player, Instant now) {
+        player.setActiveDrillId(null);
+        player.setTrainingStartedAt(null);
+        player.setTrainingFinishesAt(null);
+        player.setEnergyUpdatedAt(now);
+        player.setLastTrainedAt(now);
+        player.setDecayUpdatedAt(now);
+    }
+
+    private TrainingStatus statusOf(Player player, Instant now) {
+        UUID drillId = player.getActiveDrillId();
+        if (drillId == null) {
+            return TrainingStatus.idle();
         }
+        String name = drillRepository.findById(drillId).map(TrainingDrill::getName).orElse(null);
+        Instant finishesAt = player.getTrainingFinishesAt();
+        long remaining = finishesAt == null ? 0 : Math.max(0, Duration.between(now, finishesAt).getSeconds());
+        return new TrainingStatus(true, drillId.toString(), name,
+                finishesAt == null ? null : finishesAt.toString(), remaining, remaining <= 0);
+    }
+
+    private boolean allMaxed(Player player, TrainingDrill drill) {
+        for (DrillEffect e : drill.getEffects()) {
+            if (AttributeAccess.read(player, e.getAttribute()) < ATTRIBUTE_CAP) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Diminishing returns: gain shrinks as the attribute approaches the cap (always at least +1). */
+    static int computeGain(int baseGain, int current, int cap) {
+        int span = Math.max(1, cap - DIMINISH_FLOOR);
+        int raw = (int) Math.round(baseGain * (double) (cap - current) / span);
+        return Math.max(1, Math.min(raw, cap - current));
     }
 }

@@ -80,12 +80,12 @@ public class AuthService {
                 saved,
                 request.getLatitude(),
                 request.getLongitude(),
-                request.getPosition(),
                 request.getPreferredFoot(),
                 request.getDisplayName(),
                 request.getAppearance(),
                 request.getKitHomeId(),
-                request.getKitAwayId());
+                request.getKitAwayId(),
+                request.getPatternId());
 
         return issueTokens(saved);
     }

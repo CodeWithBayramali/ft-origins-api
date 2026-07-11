@@ -13,7 +13,12 @@ data class RegionResponse(
     val district: String?,
     val neighborhood: String?,
     val centerLat: Double,
-    val centerLng: Double
+    val centerLng: Double,
+    // Team kit: colour ids into the client KitCatalog (0-9) + the shared pattern id (0-6),
+    // so the client can render this team's players. Null on teams founded before kits/patterns.
+    val kitHome: Int?,
+    val kitAway: Int?,
+    val kitPattern: Int?
 ) {
     companion object {
         @JvmStatic
@@ -27,7 +32,10 @@ data class RegionResponse(
             district = region.district,
             neighborhood = region.neighborhood,
             centerLat = region.centerLat,
-            centerLng = region.centerLng
+            centerLng = region.centerLng,
+            kitHome = region.kitHome,
+            kitAway = region.kitAway,
+            kitPattern = region.kitPattern
         )
     }
 }

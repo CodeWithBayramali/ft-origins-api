@@ -19,13 +19,16 @@ public class LocationService {
     private final GeoService geoService;
     private final RegionRepository regionRepository;
     private final CountryRepository countryRepository;
+    private final RegionService regionService;
 
     public LocationService(GeoService geoService,
                            RegionRepository regionRepository,
-                           CountryRepository countryRepository) {
+                           CountryRepository countryRepository,
+                           RegionService regionService) {
         this.geoService = geoService;
         this.regionRepository = regionRepository;
         this.countryRepository = countryRepository;
+        this.regionService = regionService;
     }
 
     /** Preview the cell + labels for a coordinate WITHOUT creating a region (used before registration). */
@@ -41,11 +44,13 @@ public class LocationService {
                 ? countryRepository.findById(countryCode).map(Country::getName).orElse(null)
                 : null;
 
-        RegionResponse region = regionRepository.findByH3Index(cell)
-                .map(RegionResponse::from)
-                .orElse(null);
+        // The team this pin would JOIN (proximity-based, same rule as registration), or null when
+        // the pin would FOUND a new team. Null here == the caller is the founder and may pick the kit.
+        Region joinable = regionService.findJoinableTeam(latitude, longitude);
+        RegionResponse region = joinable != null ? RegionResponse.from(joinable) : null;
 
-        return new LocationResolveResponse(cell, center[0], center[1], countryCode, countryName, cityName, region);
+        return new LocationResolveResponse(cell, center[0], center[1], countryCode, countryName, cityName,
+                region, joinable == null);
     }
 
     @Transactional(readOnly = true)

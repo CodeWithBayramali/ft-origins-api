@@ -18,6 +18,9 @@ public class RegionService {
     /** Number of kit designs in the client-side KitCatalog; kit ids are 0..KIT_COUNT-1. */
     public static final int KIT_COUNT = 10;
 
+    /** Number of kit patterns in the client-side pattern catalog; pattern ids are 0..PATTERN_COUNT-1. */
+    public static final int PATTERN_COUNT = 7;
+
     private final RegionRepository regionRepository;
     private final GeoService geoService;
     private final RegionNameGenerator nameGenerator;
@@ -49,15 +52,30 @@ public class RegionService {
      * (the unique h3_index still guards the rare same-cell creation race).
      */
     @Transactional
-    public Region getOrCreateForLocation(double lat, double lng, Integer kitHome, Integer kitAway) {
+    public Region getOrCreateForLocation(double lat, double lng, Integer kitHome, Integer kitAway, Integer pattern) {
+        Region joinable = findJoinableTeam(lat, lng);
+        if (joinable != null) {
+            return joinable; // joining an existing team — its kits are already locked
+        }
+        // No team in range → this player FOUNDS one and their kit + pattern choices stick.
+        return createRegion(geoService.toCell(lat, lng), kitHome, kitAway, pattern);
+    }
+
+    /**
+     * The team a pin at this location would JOIN (nearest within {@link #joinRadiusKm} with room,
+     * else a not-full team in the same H3 cell), or null when the location would FOUND a new team.
+     * Read-only preview shared with {@code getOrCreateForLocation} so the pre-registration check and
+     * the actual registration agree on who is the founder. Founder = the caller who gets null here.
+     */
+    @Transactional(readOnly = true)
+    public Region findJoinableTeam(double lat, double lng) {
         Region nearby = nearestExistingTeam(lat, lng);
         if (nearby != null) {
-            return nearby; // joining an existing team — its kits are already locked
+            return nearby;
         }
-        String cell = geoService.toCell(lat, lng);
-        return regionRepository.findByH3Index(cell)
+        return regionRepository.findByH3Index(geoService.toCell(lat, lng))
                 .filter(r -> r.getPlayerCount() < maxMembers)
-                .orElseGet(() -> createRegion(cell, kitHome, kitAway));
+                .orElse(null);
     }
 
     /**
@@ -86,7 +104,7 @@ public class RegionService {
         return nearest;
     }
 
-    private Region createRegion(String cell, Integer kitHome, Integer kitAway) {
+    private Region createRegion(String cell, Integer kitHome, Integer kitAway, Integer pattern) {
         double[] center = geoService.cellCenter(cell);
 
         Region region = new Region();
@@ -97,6 +115,7 @@ public class RegionService {
         region.setNameCustomized(false);
         region.setPlayerCount(0);
         assignKits(region, cell, kitHome, kitAway);
+        assignPattern(region, pattern);
 
         applyPlaceLabels(region, center[0], center[1]);
 
@@ -119,6 +138,15 @@ public class RegionService {
         if (away == home) away = (home + 5) % KIT_COUNT;
         region.setKitHome(home);
         region.setKitAway(away);
+    }
+
+    /**
+     * Locks in the founder's kit pattern. A missing/invalid choice falls back to solid
+     * (pattern 0) so legacy teams and old clients render a plain kit rather than a random one.
+     */
+    private void assignPattern(Region region, Integer pattern) {
+        int p = pattern != null && pattern >= 0 && pattern < PATTERN_COUNT ? pattern : 0;
+        region.setKitPattern(p);
     }
 
     /**

@@ -2,7 +2,6 @@ package com.codewithbayramali.ftorigins.auth.dto
 
 import com.codewithbayramali.ftorigins.player.dto.AppearanceRequest
 import com.codewithbayramali.ftorigins.player.model.Foot
-import com.codewithbayramali.ftorigins.player.model.Position
 import jakarta.validation.Valid
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
@@ -54,8 +53,6 @@ data class RegisterRequest(
     @field:DecimalMax("180.0")
     val longitude: Double?,
 
-    val position: Position? = null,
-
     // Preferred (dominant) foot chosen on the character screen; defaults to RIGHT when omitted.
     val preferredFoot: Foot? = null,
 
@@ -69,6 +66,11 @@ data class RegisterRequest(
 
     @field:Min(0) @field:Max(9)
     val kitAwayId: Int? = null,
+
+    // Kit pattern (fabric design) chosen on the character screen. Only honoured when this
+    // registration FOUNDS a new team; ignored when joining an existing one.
+    @field:Min(0) @field:Max(6)
+    val patternId: Int? = null,
 
     @field:Valid
     val appearance: AppearanceRequest? = null

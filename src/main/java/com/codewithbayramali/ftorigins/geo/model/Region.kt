@@ -61,4 +61,10 @@ class Region : BaseEntity() {
 
     @Column(name = "kit_away")
     var kitAway: Int? = null
+
+    /** Kit pattern id into the client-side pattern catalog (0-6); chosen by the founding
+     *  player, applied to both home and away kits. Null on teams created before patterns
+     *  existed — the client falls back to solid (pattern 0). */
+    @Column(name = "kit_pattern")
+    var kitPattern: Int? = null
 }

@@ -15,6 +15,7 @@ import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToOne
 import jakarta.persistence.Table
 import java.time.Instant
+import java.util.UUID
 
 /**
  * The in-game player profile. 1-1 with [User] (account/currency stays on User).
@@ -64,33 +65,48 @@ class Player : BaseEntity() {
     @Column(name = "weight_kg", nullable = false)
     var weightKg: Int = 75
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 8)
-    var position: Position = Position.MID
-
     /** Preferred (dominant) foot — the foot the player dribbles and shoots with in matches. */
     @Enumerated(EnumType.STRING)
     @Column(name = "preferred_foot", nullable = false, length = 8)
     var preferredFoot: Foot = Foot.RIGHT
 
-    // Base attributes (1-99). Effective values may later add bounded item bonuses.
-    @Column(nullable = false) var pace: Int = 50
-    @Column(nullable = false) var shooting: Int = 50
-    @Column(nullable = false) var passing: Int = 50
-    @Column(nullable = false) var dribbling: Int = 50
-    @Column(nullable = false) var defending: Int = 50
-    @Column(nullable = false) var physical: Int = 50
-    @Column(nullable = false) var goalkeeping: Int = 45
+    // Base attributes (1-99). Everyone starts equal at a low, fair floor (35) and earns growth through
+    // training + matches — no positional head start. Effective values may add bounded item bonuses later.
+    @Column(nullable = false) var pace: Int = 35
+    @Column(nullable = false) var shooting: Int = 35
+    @Column(nullable = false) var passing: Int = 35
+    @Column(nullable = false) var dribbling: Int = 35
+    @Column(nullable = false) var defending: Int = 35
+    @Column(nullable = false) var physical: Int = 35
+    @Column(nullable = false) var goalkeeping: Int = 35
 
     // Curve / "falso": how much bend the player can put on a struck ball. Body-neutral; trainable.
-    @Column(nullable = false) var curve: Int = 50
+    @Column(nullable = false) var curve: Int = 35
 
-    @Column(nullable = false) var level: Int = 1
-    @Column(nullable = false) var xp: Int = 0
-
-    // Training energy regenerates over time; gates daily training for fairness.
+    // Training energy regenerates over time; gates daily training volume for fairness.
     @Column(nullable = false) var energy: Int = 100
 
     @Column(name = "energy_updated_at", nullable = false)
     var energyUpdatedAt: Instant = Instant.now()
+
+    // Inactivity decay (see PlayerUpkeepService): after a grace period without training, attributes
+    // erode so recent activity — not seniority — drives the overall rating. lastTrainedAt resets on
+    // every training; decayUpdatedAt marks how far decay has already been applied.
+    @Column(name = "last_trained_at", nullable = false)
+    var lastTrainedAt: Instant = Instant.now()
+
+    @Column(name = "decay_updated_at", nullable = false)
+    var decayUpdatedAt: Instant = Instant.now()
+
+    // Active timed-training session. Null = idle. Starting spends energy + sets trainingFinishesAt; the
+    // gain lands only on claim (after the duration), and cancelling forfeits it. Blocks a second session
+    // and (see PlayerUpkeepService) pauses energy regen while active. Matches will check this busy state.
+    @Column(name = "active_drill_id")
+    var activeDrillId: UUID? = null
+
+    @Column(name = "training_started_at")
+    var trainingStartedAt: Instant? = null
+
+    @Column(name = "training_finishes_at")
+    var trainingFinishesAt: Instant? = null
 }

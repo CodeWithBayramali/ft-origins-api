@@ -10,7 +10,6 @@ import com.codewithbayramali.ftorigins.player.dto.UpdatePlayerRequest;
 import com.codewithbayramali.ftorigins.player.model.Foot;
 import com.codewithbayramali.ftorigins.player.model.Player;
 import com.codewithbayramali.ftorigins.player.model.PlayerAppearance;
-import com.codewithbayramali.ftorigins.player.model.Position;
 import com.codewithbayramali.ftorigins.player.repository.PlayerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,10 +21,13 @@ public class PlayerService {
 
     private final PlayerRepository playerRepository;
     private final RegionService regionService;
+    private final PlayerUpkeepService upkeep;
 
-    public PlayerService(PlayerRepository playerRepository, RegionService regionService) {
+    public PlayerService(PlayerRepository playerRepository, RegionService regionService,
+                         PlayerUpkeepService upkeep) {
         this.playerRepository = playerRepository;
         this.regionService = regionService;
+        this.upkeep = upkeep;
     }
 
     /**
@@ -35,10 +37,10 @@ public class PlayerService {
      */
     @Transactional
     public Player createForRegistration(User user, double latitude, double longitude,
-                                        Position position, Foot preferredFoot,
+                                        Foot preferredFoot,
                                         String displayName, AppearanceRequest appearance,
-                                        Integer kitHomeId, Integer kitAwayId) {
-        Region region = regionService.getOrCreateForLocation(latitude, longitude, kitHomeId, kitAwayId);
+                                        Integer kitHomeId, Integer kitAwayId, Integer patternId) {
+        Region region = regionService.getOrCreateForLocation(latitude, longitude, kitHomeId, kitAwayId, patternId);
 
         Player player = new Player();
         player.setUser(user);
@@ -46,7 +48,6 @@ public class PlayerService {
         player.setHomeLat(latitude);
         player.setHomeLng(longitude);
         player.setH3Index(region.getH3Index());
-        player.setPosition(position != null ? position : Position.MID);
         player.setPreferredFoot(preferredFoot != null ? preferredFoot : Foot.RIGHT);
         player.setDisplayName(displayName != null && !displayName.isBlank() ? displayName.trim() : user.getUsername());
         if (appearance != null) {
@@ -58,11 +59,14 @@ public class PlayerService {
         return saved;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public PlayerResponse getMyProfile(UUID userId) {
-        return playerRepository.findDetailByUserId(userId)
-                .map(PlayerResponse::from)
+        Player player = playerRepository.findDetailByUserId(userId)
                 .orElseThrow(() -> new NotFoundException("PLAYER_NOT_FOUND", "No player profile for this account"));
+        // Lazy upkeep on read: regenerate energy + apply inactivity decay. Dirty-checking persists any
+        // change on commit; an idle player still in the grace window is not mutated, so the GET stays read-only.
+        upkeep.refresh(player);
+        return PlayerResponse.from(player);
     }
 
     @Transactional
@@ -72,9 +76,6 @@ public class PlayerService {
 
         if (request.getDisplayName() != null && !request.getDisplayName().isBlank()) {
             player.setDisplayName(request.getDisplayName().trim());
-        }
-        if (request.getPosition() != null) {
-            player.setPosition(request.getPosition());
         }
         if (request.getPreferredFoot() != null) {
             player.setPreferredFoot(request.getPreferredFoot());
