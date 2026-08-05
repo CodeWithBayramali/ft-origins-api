@@ -9,6 +9,7 @@ import com.codewithbayramali.ftorigins.exception.UnauthorizedException;
 import com.codewithbayramali.ftorigins.model.User;
 import com.codewithbayramali.ftorigins.player.service.PlayerService;
 import com.codewithbayramali.ftorigins.repository.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -49,6 +50,21 @@ public class AuthService {
         this.playerService = playerService;
     }
 
+    /**
+     * Pre-registration availability probe (see {@link AvailabilityRequest}). Mirrors exactly the
+     * checks {@link #register} enforces, so the wizard can reject a taken email/username on the form
+     * where it was typed instead of at the end. Purely advisory — register stays authoritative
+     * (a value can still be taken in the window between this check and the final submit).
+     */
+    @Transactional(readOnly = true)
+    public AvailabilityResponse checkAvailability(AvailabilityRequest request) {
+        boolean emailTaken = request.getEmail() != null && !request.getEmail().isBlank()
+                && userRepository.existsByEmailIgnoreCase(request.getEmail().trim());
+        boolean usernameTaken = request.getUsername() != null && !request.getUsername().isBlank()
+                && userRepository.existsByUsernameIgnoreCase(request.getUsername().trim());
+        return new AvailabilityResponse(emailTaken, usernameTaken);
+    }
+
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByUsernameIgnoreCase(request.getUsername())) {
@@ -74,7 +90,17 @@ public class AuthService {
         user.setGems(0);
         user.setBirthDate(birthDate);
 
-        User saved = userRepository.save(user);
+        User saved;
+        try {
+            // Flush now so a unique-constraint violation surfaces here (not at commit). The existsBy
+            // pre-checks above are not atomic: a concurrent registration with the same username/email
+            // can slip in between the check and this insert, and the DB unique constraints
+            // (uq_users_username / uq_users_email) reject it. Map that race to the same clean 409 the
+            // pre-checks return, instead of letting it bubble up as a generic 500.
+            saved = userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException dup) {
+            throw new ConflictException("USERNAME_OR_EMAIL_TAKEN", "Username or email is already registered");
+        }
 
         playerService.createForRegistration(
                 saved,
@@ -83,9 +109,11 @@ public class AuthService {
                 request.getPreferredFoot(),
                 request.getDisplayName(),
                 request.getAppearance(),
+                request.getTeamName(),
                 request.getKitHomeId(),
                 request.getKitAwayId(),
-                request.getPatternId());
+                request.getPatternId(),
+                Boolean.TRUE.equals(request.getJoinExisting()));
 
         return issueTokens(saved);
     }

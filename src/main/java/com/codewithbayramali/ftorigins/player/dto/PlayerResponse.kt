@@ -3,9 +3,8 @@ package com.codewithbayramali.ftorigins.player.dto
 import com.codewithbayramali.ftorigins.player.model.Foot
 import com.codewithbayramali.ftorigins.player.model.Player
 import com.codewithbayramali.ftorigins.player.model.PlayerAppearance
-import com.codewithbayramali.ftorigins.player.service.BodyModifiers
+import com.codewithbayramali.ftorigins.player.service.EffectiveAttributes
 import java.util.UUID
-import kotlin.math.roundToInt
 
 /**
  * Player view. Attributes are EFFECTIVE values (base + body trade-off, clamped 1-99); [overall] is
@@ -28,6 +27,8 @@ data class PlayerResponse(
     val curve: Int,
     val overall: Int,
     val energy: Int,
+    /** Equipped boot design id into the client BootCatalog (0-19); the avatar dresses with this. */
+    val bootDesignId: Int,
     val appearance: PlayerAppearance,
     val regionId: UUID?,
     val regionName: String?,
@@ -44,36 +45,27 @@ data class PlayerResponse(
     companion object {
         @JvmStatic
         fun from(player: Player): PlayerResponse {
-            val weight = player.weightKg
-            val height = player.heightCm
-
             // Body modifiers apply on read; base attributes (trained) stay untouched.
-            val pace = BodyModifiers.clamp(player.pace + BodyModifiers.paceDelta(weight, height))
-            val shooting = BodyModifiers.clamp(player.shooting) // body-neutral
-            val passing = BodyModifiers.clamp(player.passing)   // body-neutral
-            val dribbling = BodyModifiers.clamp(player.dribbling + BodyModifiers.dribblingDelta(weight, height))
-            val defending = BodyModifiers.clamp(player.defending + BodyModifiers.defendingDelta(weight, height))
-            val physical = BodyModifiers.clamp(player.physical + BodyModifiers.physicalDelta(weight, height))
-            val goalkeeping = BodyModifiers.clamp(player.goalkeeping + BodyModifiers.goalkeepingDelta(weight, height))
-            val curve = BodyModifiers.clamp(player.curve) // body-neutral
+            val effective = EffectiveAttributes.of(player)
 
             return PlayerResponse(
                 id = player.id!!,
                 username = player.user?.username,
                 displayName = player.displayName,
                 preferredFoot = player.preferredFoot,
-                heightCm = height,
-                weightKg = weight,
-                pace = pace,
-                shooting = shooting,
-                passing = passing,
-                dribbling = dribbling,
-                defending = defending,
-                physical = physical,
-                goalkeeping = goalkeeping,
-                curve = curve,
-                overall = overall(pace, shooting, passing, dribbling, defending, physical, goalkeeping, curve),
+                heightCm = player.heightCm,
+                weightKg = player.weightKg,
+                pace = effective.pace(),
+                shooting = effective.shooting(),
+                passing = effective.passing(),
+                dribbling = effective.dribbling(),
+                defending = effective.defending(),
+                physical = effective.physical(),
+                goalkeeping = effective.goalkeeping(),
+                curve = effective.curve(),
+                overall = effective.overall(),
                 energy = player.energy,
+                bootDesignId = player.bootDesignId,
                 appearance = player.appearance,
                 regionId = player.region?.id,
                 regionName = player.region?.name,
@@ -86,12 +78,5 @@ data class PlayerResponse(
                 teamKitPattern = player.region?.kitPattern
             )
         }
-
-        /** General overall rating from EFFECTIVE attributes — a simple average across every skill.
-         *  Position-neutral: every player can play anywhere, so all-round completeness is what counts. */
-        private fun overall(
-            pace: Int, shooting: Int, passing: Int, dribbling: Int,
-            defending: Int, physical: Int, goalkeeping: Int, curve: Int
-        ): Int = ((pace + shooting + passing + dribbling + defending + physical + goalkeeping + curve) / 8.0).roundToInt()
     }
 }

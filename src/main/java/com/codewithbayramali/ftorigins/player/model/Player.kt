@@ -70,9 +70,15 @@ class Player : BaseEntity() {
     @Column(name = "preferred_foot", nullable = false, length = 8)
     var preferredFoot: Foot = Foot.RIGHT
 
+    /** Equipped boot design (client BootCatalog id 0-19). 0 = the free default every player owns. */
+    @Column(name = "boot_design_id", nullable = false)
+    var bootDesignId: Int = 0
+
     // Base attributes (1-99). Everyone starts equal at a low, fair floor (35) and earns growth through
     // training + matches — no positional head start. Effective values may add bounded item bonuses later.
-    @Column(nullable = false) var pace: Int = 35
+    // Exception: pace floors at 45 — the run speed the client derives from it must feel playable on the
+    // pitch from day one (a 35-pace starter crawled), and this is the server-owned knob that tunes it.
+    @Column(nullable = false) var pace: Int = 45
     @Column(nullable = false) var shooting: Int = 35
     @Column(nullable = false) var passing: Int = 35
     @Column(nullable = false) var dribbling: Int = 35

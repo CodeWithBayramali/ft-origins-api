@@ -8,9 +8,11 @@ import com.codewithbayramali.ftorigins.geo.model.Country;
 import com.codewithbayramali.ftorigins.geo.model.Region;
 import com.codewithbayramali.ftorigins.geo.repository.CountryRepository;
 import com.codewithbayramali.ftorigins.geo.repository.RegionRepository;
+import com.codewithbayramali.ftorigins.player.repository.PlayerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -20,15 +22,18 @@ public class LocationService {
     private final RegionRepository regionRepository;
     private final CountryRepository countryRepository;
     private final RegionService regionService;
+    private final PlayerRepository playerRepository;
 
     public LocationService(GeoService geoService,
                            RegionRepository regionRepository,
                            CountryRepository countryRepository,
-                           RegionService regionService) {
+                           RegionService regionService,
+                           PlayerRepository playerRepository) {
         this.geoService = geoService;
         this.regionRepository = regionRepository;
         this.countryRepository = countryRepository;
         this.regionService = regionService;
+        this.playerRepository = playerRepository;
     }
 
     /** Preview the cell + labels for a coordinate WITHOUT creating a region (used before registration). */
@@ -48,9 +53,12 @@ public class LocationService {
         // the pin would FOUND a new team. Null here == the caller is the founder and may pick the kit.
         Region joinable = regionService.findJoinableTeam(latitude, longitude);
         RegionResponse region = joinable != null ? RegionResponse.from(joinable) : null;
+        List<Integer> takenNumbers = joinable != null
+                ? playerRepository.findKitNumbersByRegionId(joinable.getId())
+                : List.of();
 
         return new LocationResolveResponse(cell, center[0], center[1], countryCode, countryName, cityName,
-                region, joinable == null);
+                region, joinable == null, takenNumbers);
     }
 
     @Transactional(readOnly = true)

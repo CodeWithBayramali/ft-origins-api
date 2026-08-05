@@ -58,9 +58,15 @@ dependencies {
 
     implementation 'com.uber:h3:4.1.1'
 
+    // JJWT splits into api (compile) + impl/jackson (loaded reflectively at runtime). These two are
+    // normally 'runtimeOnly', but that scope is dropped by some launch paths (notably running the app
+    // from IntelliJ instead of `gradlew bootRun`), which leaves jjwt-impl off the classpath and throws
+    // "Unable to load class io.jsonwebtoken.impl.security.KeysBridge ... include jjwt-impl.jar". Using
+    // 'implementation' puts them on every classpath (IDE run, bootRun, boot jar) — harmless, since the
+    // impl/jackson APIs aren't referenced at compile time anyway.
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    implementation 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    implementation 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 }
 
 tasks.withType(JavaCompile).configureEach {

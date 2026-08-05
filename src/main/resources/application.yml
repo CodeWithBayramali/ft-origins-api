@@ -73,7 +73,11 @@ app:
       max-age: 3600
 
   geo:
-    h3-resolution: 8
+    # res 9 ≈ 150-175 m cell radius, matching the team join-radius (0.15 km) so "one team per cell"
+    # lines up with the visible team circle. Coarser (res 8 ≈ 460 m) made teams balloon to ~1 km via
+    # the same-cell join. NOTE: h3_index values are resolution-specific — teams created at another
+    # resolution won't match new same-cell lookups, so change this only with an empty regions table.
+    h3-resolution: 9
     # GeoNames reference data (reverse-geocode pin -> country/city labels).
     # Default path is relative to the working dir (= project root when run from IntelliJ/Gradle).
     # Override with the env var to point elsewhere (e.g. an absolute path).
@@ -93,7 +97,27 @@ app:
   team:
     # Players registering within this radius (km) of an existing team's anchor join that team,
     # instead of getting split by H3 grid boundaries. Lower = more local teams; higher = wider catchment.
-    join-radius-km: ${TEAM_JOIN_RADIUS_KM:1.0}
+    join-radius-km: ${TEAM_JOIN_RADIUS_KM:0.15}
     # Team capacity: full teams are skipped at join time (next-nearest in range, else a new team).
-    # Matches are 5v5, so 8 leaves a bench.
-    max-members: ${TEAM_MAX_MEMBERS:8}
+    # Matches are 6v6 (1 GK + 5 outfield), so 10 leaves a real bench for substitutions.
+    max-members: ${TEAM_MAX_MEMBERS:10}
+
+  match:
+    # Lineup edits close this many minutes before kickoff; from then on the kickoff job owns the
+    # lineup (stat snapshots + AI fillers for empty slots).
+    lineup-lock-minutes: ${MATCH_LINEUP_LOCK_MINUTES:15}
+    # One match at a time per team: booking fails when either side already has a scheduled/live
+    # match within this many minutes of the requested kickoff (covers the real-time window a live
+    # simulated match runs, plus buffer).
+    conflict-window-minutes: ${MATCH_CONFLICT_WINDOW_MINUTES:30}
+    # Friendlies can be booked at most this many days ahead.
+    max-schedule-days-ahead: ${MATCH_MAX_SCHEDULE_DAYS_AHEAD:7}
+    # Live pacing: one simulated match minute per this many real seconds (8 -> a 90' match runs in
+    # 12 real minutes). Overdue minutes (downtime, missed kickoffs) are caught up in one burst.
+    sim-minute-real-seconds: ${MATCH_SIM_MINUTE_REAL_SECONDS:8}
+    # How often the scheduler starts due kickoffs and advances live matches.
+    tick-millis: ${MATCH_TICK_MILLIS:2000}
+    # Founder live substitutions per team per match. No re-entry once subbed out.
+    max-substitutions: ${MATCH_MAX_SUBSTITUTIONS:3}
+    # Attribute value of the standard AI fillers that complete short-handed lineups.
+    ai-fill-rating: ${MATCH_AI_FILL_RATING:40}

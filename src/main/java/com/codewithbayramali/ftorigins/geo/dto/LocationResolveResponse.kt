@@ -11,5 +11,7 @@ data class LocationResolveResponse(
     val region: RegionResponse?,
     /** True when no joinable team is in range → the registering player would FOUND the team and
      *  therefore gets to pick its kit + pattern. False → joining; the kit is locked to [region]. */
-    val willFoundTeam: Boolean
+    val willFoundTeam: Boolean,
+    /** Shirt numbers teammates already wear in [region] — the client greys these out. Empty when founding. */
+    val takenKitNumbers: List<Int> = emptyList()
 )

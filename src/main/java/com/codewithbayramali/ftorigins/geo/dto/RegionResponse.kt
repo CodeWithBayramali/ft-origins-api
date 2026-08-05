@@ -18,7 +18,10 @@ data class RegionResponse(
     // so the client can render this team's players. Null on teams founded before kits/patterns.
     val kitHome: Int?,
     val kitAway: Int?,
-    val kitPattern: Int?
+    val kitPattern: Int?,
+    // The founding player (= team manager: lineups + live match changes). The client compares this
+    // against its own player id to show/hide management UI. Null while the seat is vacant.
+    val founderPlayerId: UUID?
 ) {
     companion object {
         @JvmStatic
@@ -35,7 +38,8 @@ data class RegionResponse(
             centerLng = region.centerLng,
             kitHome = region.kitHome,
             kitAway = region.kitAway,
-            kitPattern = region.kitPattern
+            kitPattern = region.kitPattern,
+            founderPlayerId = region.founderPlayerId
         )
     }
 }

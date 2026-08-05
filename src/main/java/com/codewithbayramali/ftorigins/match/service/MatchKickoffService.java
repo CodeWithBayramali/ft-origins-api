@@ -1,0 +1,155 @@
+package com.codewithbayramali.ftorigins.match.service;
+
+import com.codewithbayramali.ftorigins.geo.model.Region;
+import com.codewithbayramali.ftorigins.match.model.Formation;
+import com.codewithbayramali.ftorigins.match.model.Match;
+import com.codewithbayramali.ftorigins.match.model.MatchLineup;
+import com.codewithbayramali.ftorigins.match.model.MatchParticipant;
+import com.codewithbayramali.ftorigins.match.model.MatchStatus;
+import com.codewithbayramali.ftorigins.match.repository.MatchLineupRepository;
+import com.codewithbayramali.ftorigins.match.repository.MatchParticipantRepository;
+import com.codewithbayramali.ftorigins.match.repository.MatchRepository;
+import com.codewithbayramali.ftorigins.player.model.Foot;
+import com.codewithbayramali.ftorigins.player.model.Player;
+import com.codewithbayramali.ftorigins.player.repository.PlayerRepository;
+import com.codewithbayramali.ftorigins.player.service.EffectiveAttributes;
+import com.codewithbayramali.ftorigins.player.service.PlayerUpkeepService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+
+/**
+ * Turns a SCHEDULED match into a LIVE one at kickoff time: finalizes both lineups (founder's
+ * choice, or the best auto-pick when nobody submitted), freezes every participant's EFFECTIVE
+ * stats as the kickoff snapshot, fills empty slots with standard AI players, and locks the RNG
+ * seed. From this moment the match is fully reproducible and mid-match training can't touch it.
+ */
+@Service
+public class MatchKickoffService {
+
+    private static final Logger log = LoggerFactory.getLogger(MatchKickoffService.class);
+
+    /** AI fillers wear high shirt numbers so they never collide with a member's number. */
+    private static final int AI_KIT_NUMBER_BASE = 90;
+
+    private final MatchRepository matchRepository;
+    private final MatchLineupRepository lineupRepository;
+    private final MatchParticipantRepository participantRepository;
+    private final PlayerRepository playerRepository;
+    private final DefaultLineupFactory defaultLineupFactory;
+    private final PlayerUpkeepService upkeep;
+    private final int aiFillRating;
+
+    public MatchKickoffService(MatchRepository matchRepository,
+                               MatchLineupRepository lineupRepository,
+                               MatchParticipantRepository participantRepository,
+                               PlayerRepository playerRepository,
+                               DefaultLineupFactory defaultLineupFactory,
+                               PlayerUpkeepService upkeep,
+                               @Value("${app.match.ai-fill-rating:40}") int aiFillRating) {
+        this.matchRepository = matchRepository;
+        this.lineupRepository = lineupRepository;
+        this.participantRepository = participantRepository;
+        this.playerRepository = playerRepository;
+        this.defaultLineupFactory = defaultLineupFactory;
+        this.upkeep = upkeep;
+        this.aiFillRating = aiFillRating;
+    }
+
+    /** Idempotent: only a SCHEDULED match kicks off; re-runs (scheduler races) are no-ops. */
+    @Transactional
+    public void kickOff(UUID matchId) {
+        Match match = matchRepository.findDetailById(matchId).orElse(null);
+        if (match == null || match.getStatus() != MatchStatus.SCHEDULED) {
+            return;
+        }
+        prepareSide(match, match.getHomeRegion());
+        prepareSide(match, match.getAwayRegion());
+        match.setSeed(ThreadLocalRandom.current().nextLong());
+        match.setStatus(MatchStatus.LIVE);
+        match.setSimMinute(0);
+        log.info("Match {} kicked off: {} vs {}", match.getId(),
+                match.getHomeRegion().getName(), match.getAwayRegion().getName());
+    }
+
+    private void prepareSide(Match match, Region side) {
+        List<MatchParticipant> participants =
+                participantRepository.findByMatchIdAndRegionIdOrderBySlot(match.getId(), side.getId());
+        if (participants.isEmpty()) {
+            participants = buildAutoLineup(match, side);
+        }
+        participants.forEach(this::snapshot);
+    }
+
+    /** No founder submission — the system fields the best available lineup (AI fills the gaps). */
+    private List<MatchParticipant> buildAutoLineup(Match match, Region side) {
+        MatchLineup lineup = lineupRepository.findByMatchIdAndRegionId(match.getId(), side.getId())
+                .orElseGet(() -> {
+                    MatchLineup fresh = new MatchLineup();
+                    fresh.setMatch(match);
+                    fresh.setRegion(side);
+                    fresh.setFormation(DefaultLineupFactory.DEFAULT_FORMATION);
+                    return fresh;
+                });
+        lineup.setAutoGenerated(true);
+        lineupRepository.save(lineup);
+
+        Formation formation = lineup.getFormation();
+        List<MatchParticipant> built = new ArrayList<>();
+        for (DefaultLineupFactory.Slot slot
+                : defaultLineupFactory.build(formation, playerRepository.findByRegionId(side.getId()))) {
+            MatchParticipant participant = new MatchParticipant();
+            participant.setMatch(match);
+            participant.setRegion(side);
+            participant.setSlot(slot.slot());
+            participant.setRole(slot.role());
+            participant.setPlayer(slot.player());
+            participant.setAiFill(slot.player() == null);
+            built.add(participant);
+        }
+        return participantRepository.saveAll(built);
+    }
+
+    /** Freezes the kickoff snapshot; a slot whose player vanished becomes a standard AI filler. */
+    private void snapshot(MatchParticipant participant) {
+        Player player = participant.getPlayer();
+        if (player == null) {
+            participant.setAiFill(true);
+            participant.setDisplayName("Youth " + (participant.getSlot() + 1));
+            participant.setKitNumber(AI_KIT_NUMBER_BASE + participant.getSlot());
+            participant.setPreferredFoot(Foot.RIGHT);
+            applyStats(participant, aiFillRating, aiFillRating, aiFillRating, aiFillRating,
+                    aiFillRating, aiFillRating, aiFillRating, aiFillRating, 100);
+            return;
+        }
+        // Refresh first so lazily-regenerated energy is credited before it's frozen into the match.
+        upkeep.refresh(player);
+        EffectiveAttributes eff = EffectiveAttributes.of(player);
+        participant.setDisplayName(player.getDisplayName());
+        participant.setKitNumber(player.getAppearance().getKitNumber());
+        participant.setPreferredFoot(player.getPreferredFoot());
+        applyStats(participant, eff.pace(), eff.shooting(), eff.passing(), eff.dribbling(),
+                eff.defending(), eff.physical(), eff.goalkeeping(), eff.curve(), player.getEnergy());
+    }
+
+    private static void applyStats(MatchParticipant p, int pace, int shooting, int passing,
+                                   int dribbling, int defending, int physical, int goalkeeping,
+                                   int curve, int energy) {
+        p.setPace(pace);
+        p.setShooting(shooting);
+        p.setPassing(passing);
+        p.setDribbling(dribbling);
+        p.setDefending(defending);
+        p.setPhysical(physical);
+        p.setGoalkeeping(goalkeeping);
+        p.setCurve(curve);
+        p.setEnergy(energy);
+    }
+}

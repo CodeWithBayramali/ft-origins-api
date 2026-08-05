@@ -15,20 +15,28 @@ public class ErrorResponse {
     private final String message;
     private final String path;
     private final List<FieldError> fieldErrors;
+    // Optional structured payload for the client — e.g. the existing team returned with REGION_TAKEN.
+    private final Object details;
     private final Instant timestamp;
 
     public ErrorResponse(int status, String error, String code, String message, String path) {
-        this(status, error, code, message, path, null);
+        this(status, error, code, message, path, null, null);
     }
 
     public ErrorResponse(int status, String error, String code, String message, String path,
                          List<FieldError> fieldErrors) {
+        this(status, error, code, message, path, fieldErrors, null);
+    }
+
+    public ErrorResponse(int status, String error, String code, String message, String path,
+                         List<FieldError> fieldErrors, Object details) {
         this.status = status;
         this.error = error;
         this.code = code;
         this.message = message;
         this.path = path;
         this.fieldErrors = fieldErrors;
+        this.details = details;
         this.timestamp = Instant.now();
     }
 
@@ -58,6 +66,10 @@ public class ErrorResponse {
 
     public List<FieldError> getFieldErrors() {
         return fieldErrors;
+    }
+
+    public Object getDetails() {
+        return details;
     }
 
     public Instant getTimestamp() {

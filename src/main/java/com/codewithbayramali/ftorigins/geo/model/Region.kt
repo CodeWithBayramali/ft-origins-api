@@ -5,6 +5,7 @@ import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Index
 import jakarta.persistence.Table
+import java.util.UUID
 
 /**
  * A "bölge" — the in-game neighborhood/team. NOT a real-world named neighborhood:
@@ -53,6 +54,13 @@ class Region : BaseEntity() {
 
     @Column(name = "player_count", nullable = false)
     var playerCount: Int = 0
+
+    /** The player who founded the team (picked the location and created it) — the team's manager:
+     *  sets match lineups and makes live match changes. Plain id, not a relation, to avoid a
+     *  geo -> player model cycle. Null only while vacant (founder's account deleted); the next
+     *  player to join claims the seat (see PlayerService), and auto-lineups cover the gap. */
+    @Column(name = "founder_player_id")
+    var founderPlayerId: UUID? = null
 
     /** Team kit ids into the client-side KitCatalog (0-9); chosen by the founding player.
      *  Null on teams created before kits existed — the client falls back to its default kit. */

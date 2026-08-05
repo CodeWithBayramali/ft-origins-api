@@ -1,0 +1,34 @@
+# Moderation blocklist for public user-chosen names (team names, later player names / chat).
+# One term per line. Lines starting with '#' are comments; blank lines are ignored.
+#
+# Terms are matched against a CANONICAL form of the name (see ProfanityFilter): TR-lowercased,
+# diacritics + leetspeak folded, non-alphanumerics dropped, repeated letters collapsed. So you do
+# NOT need to list spacing/case/leet variants — "sik", "S1K", "s.i.k", "siiik" all match "sik".
+# Matching is substring-based, which catches evasions but can over-block (the "Scunthorpe problem"):
+# avoid very short or substring-of-innocent-word terms. Curate for your audience/locale.
+#
+# This is a STARTER list of unambiguous terms, not a complete one. Expand it for production; the
+# file is read once at startup, so add terms and restart.
+
+# --- Turkish ---
+# (Deliberately NOT listing short words like "mal" or "salak": "mal" is a substring of Malatya, "sal",
+#  etc., so it would block innocent city/team names. Prefer unambiguous, longer terms.)
+amcik
+orospu
+yarrak
+gavat
+pezevenk
+siktir
+gerizekali
+amına
+amk
+sik
+# --- English ---
+fuck
+shit
+bitch
+asshole
+bastard
+nigger
+faggot
+cunt

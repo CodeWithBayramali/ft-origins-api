@@ -1,5 +1,6 @@
 package com.codewithbayramali.ftorigins.player.service;
 
+import com.codewithbayramali.ftorigins.exception.BusinessException;
 import com.codewithbayramali.ftorigins.exception.NotFoundException;
 import com.codewithbayramali.ftorigins.geo.model.Region;
 import com.codewithbayramali.ftorigins.geo.service.RegionService;
@@ -11,9 +12,11 @@ import com.codewithbayramali.ftorigins.player.model.Foot;
 import com.codewithbayramali.ftorigins.player.model.Player;
 import com.codewithbayramali.ftorigins.player.model.PlayerAppearance;
 import com.codewithbayramali.ftorigins.player.repository.PlayerRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -39,8 +42,10 @@ public class PlayerService {
     public Player createForRegistration(User user, double latitude, double longitude,
                                         Foot preferredFoot,
                                         String displayName, AppearanceRequest appearance,
-                                        Integer kitHomeId, Integer kitAwayId, Integer patternId) {
-        Region region = regionService.getOrCreateForLocation(latitude, longitude, kitHomeId, kitAwayId, patternId);
+                                        String teamName,
+                                        Integer kitHomeId, Integer kitAwayId, Integer patternId,
+                                        boolean joinExisting) {
+        Region region = regionService.getOrCreateForLocation(latitude, longitude, teamName, kitHomeId, kitAwayId, patternId, joinExisting);
 
         Player player = new Player();
         player.setUser(user);
@@ -54,7 +59,25 @@ public class PlayerService {
             applyAppearance(player, appearance);
         }
 
+        // One shirt number per team. The client greys out taken numbers (from /location/resolve),
+        // but two players can still race for the same free number — the authoritative check is here,
+        // inside the registration transaction, so the whole signup rolls back on a clash.
+        List<Integer> takenNumbers = playerRepository.findKitNumbersByRegionId(region.getId());
+        if (takenNumbers.contains(player.getAppearance().getKitNumber())) {
+            throw new BusinessException(HttpStatus.CONFLICT, "NUMBER_TAKEN",
+                    "Shirt number " + player.getAppearance().getKitNumber() + " is already taken in this team",
+                    takenNumbers);
+        }
+
         Player saved = playerRepository.save(player);
+        // First member in = founder (the person who picked the location and created the team) —
+        // they manage match lineups. Set-if-null also lets the next joiner inherit a seat vacated
+        // by a deleted founder account. (Two same-instant founders racing for a brand-new region is
+        // already collapsed onto one region by its unique h3 index; this write stays last-wins-safe
+        // because both writers would be that region's first members anyway.)
+        if (region.getFounderPlayerId() == null) {
+            region.setFounderPlayerId(saved.getId());
+        }
         region.setPlayerCount(region.getPlayerCount() + 1);
         return saved;
     }

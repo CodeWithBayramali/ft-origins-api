@@ -28,6 +28,14 @@ public class AuthController {
                 .body(ApiResponse.ok(result, "Account created"));
     }
 
+    // Pre-registration availability check (email on step 1, username on the character step). POST
+    // body — not GET query params — so emails never land in URLs/access logs. Public like register;
+    // it reveals nothing register's own EMAIL_TAKEN/USERNAME_TAKEN errors don't already reveal.
+    @PostMapping("/availability")
+    public ApiResponse<AvailabilityResponse> availability(@Valid @RequestBody AvailabilityRequest request) {
+        return ApiResponse.ok(authService.checkAvailability(request));
+    }
+
     @PostMapping("/login")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.ok(authService.login(request));
