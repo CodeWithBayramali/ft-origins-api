@@ -9,9 +9,9 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Authorizes founder-only (team manager) actions: scheduling matches, setting lineups and — in the
- * live phase — substitutions/tactic changes. One place to change if managership ever widens beyond
- * the founder (e.g. appointed captains).
+ * Authorizes founder-only (team manager) actions: scheduling matches, setting lineups, changing the
+ * team crest and — in the live phase — substitutions/tactic changes. One place to change if managership
+ * ever widens beyond the founder (e.g. appointed captains).
  */
 @Component
 public class FounderGuard {

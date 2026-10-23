@@ -18,6 +18,8 @@ data class TeamResponse(
     val kitHome: Int?,
     val kitAway: Int?,
     val kitPattern: Int?,
+    /** The team crest; null when it has none. Only the founder may change it (PUT /teams/mine/crest). */
+    val crest: CrestDto?,
     val founderPlayerId: UUID?,
     /** True when the CALLER holds the founder (manager) seat. */
     val amFounder: Boolean,
@@ -51,6 +53,7 @@ data class TeamResponse(
             kitHome = region.kitHome,
             kitAway = region.kitAway,
             kitPattern = region.kitPattern,
+            crest = CrestDto.from(region),
             founderPlayerId = region.founderPlayerId,
             amFounder = amFounder,
             playerCount = region.playerCount,

@@ -14,11 +14,13 @@ data class RegionResponse(
     val neighborhood: String?,
     val centerLat: Double,
     val centerLng: Double,
-    // Team kit: colour ids into the client KitCatalog (0-9) + the shared pattern id (0-6),
+    // Team kit: colour ids into the client KitCatalog (0-9) + the shared pattern id (0-13),
     // so the client can render this team's players. Null on teams founded before kits/patterns.
     val kitHome: Int?,
     val kitAway: Int?,
     val kitPattern: Int?,
+    // The team crest (shape, symbol, base + detail colour); null when the team has none.
+    val crest: CrestDto?,
     // The founding player (= team manager: lineups + live match changes). The client compares this
     // against its own player id to show/hide management UI. Null while the seat is vacant.
     val founderPlayerId: UUID?
@@ -39,6 +41,7 @@ data class RegionResponse(
             kitHome = region.kitHome,
             kitAway = region.kitAway,
             kitPattern = region.kitPattern,
+            crest = CrestDto.from(region),
             founderPlayerId = region.founderPlayerId
         )
     }

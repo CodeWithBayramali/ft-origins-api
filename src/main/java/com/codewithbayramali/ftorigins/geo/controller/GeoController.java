@@ -23,8 +23,8 @@ import java.util.UUID;
 @RequestMapping("/api/v1")
 public class GeoController {
 
-    /** Hard cap on markers returned for one viewport — protects the client and DB from a huge bbox. */
-    private static final int MAX_MARKERS = 500;
+    /** Hard cap on markers returned for one viewport — a street-level view never holds more. */
+    private static final int MAX_MARKERS = 200;
 
     private final LocationService locationService;
     private final RegionService regionService;
@@ -40,7 +40,8 @@ public class GeoController {
     }
 
     /**
-     * Team markers inside a map viewport (the registration map draws a join-radius circle per team).
+     * Team markers inside a map viewport (the registration map draws a team card and its join-radius
+     * circle per team).
      * Public — the map is shown before login. Capped at {@link #MAX_MARKERS}; a wider viewport keeps
      * the most-populated teams.
      */

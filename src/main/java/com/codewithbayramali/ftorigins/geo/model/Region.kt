@@ -5,13 +5,15 @@ import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Index
 import jakarta.persistence.Table
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 import java.util.UUID
 
 /**
- * A "bölge" — the in-game neighborhood/team. NOT a real-world named neighborhood:
- * it is a fixed spatial grid cell (H3) that a player's pinned location falls into.
- * Same cell = same team. Created lazily the first time a player lands in the cell,
- * with an auto-generated random name that members can change once the team fills.
+ * A "bölge" — the in-game neighborhood/team. NOT a real-world named neighborhood: it is the circle
+ * of the join radius (app.team.join-radius-km) around the founder's pinned location (the anchor).
+ * A player whose pin falls inside a team's circle (and the team has room) joins it; anyone else
+ * founds a new team at their pin. The H3 cell is only the uniqueness key.
  */
 @Entity
 @Table(
@@ -20,7 +22,9 @@ import java.util.UUID
 )
 class Region : BaseEntity() {
 
-    /** H3 cell address (hex string) at the configured resolution. Unique per region. */
+    /** H3 cell address (hex string) at the configured resolution. Unique per region: normally the cell of
+     *  the founder's pin; a team founded where a full team already holds that cell takes a free cell next
+     *  to it (membership goes by distance from the anchor, the cell is only the key). */
     @Column(name = "h3_index", nullable = false, unique = true, length = 20)
     var h3Index: String = ""
 
@@ -70,9 +74,31 @@ class Region : BaseEntity() {
     @Column(name = "kit_away")
     var kitAway: Int? = null
 
-    /** Kit pattern id into the client-side pattern catalog (0-6); chosen by the founding
+    /** Kit pattern id into the client-side pattern catalog (0-13); chosen by the founding
      *  player, applied to both home and away kits. Null on teams created before patterns
      *  existed — the client falls back to solid (pattern 0). */
     @Column(name = "kit_pattern")
     var kitPattern: Int? = null
+
+    /** Team crest ("arma"): ids into the client-side crest catalogs (sizes in CrestDto) — the shape,
+     *  the symbol drawn on it, the base colour and the detail colour the symbol is drawn in (never the
+     *  base colour). Chosen by the founding player, later changeable by the founder only. All four null
+     *  = no crest (teams founded before crests, or a founder who skipped it). The columns are SMALLINT,
+     *  so the JDBC type is pinned: a plain Int maps to INTEGER and ddl-auto=validate would reject it
+     *  (the trap V7 and V13 had to undo). */
+    @JdbcTypeCode(SqlTypes.SMALLINT)
+    @Column(name = "crest_shape")
+    var crestShape: Int? = null
+
+    @JdbcTypeCode(SqlTypes.SMALLINT)
+    @Column(name = "crest_symbol")
+    var crestSymbol: Int? = null
+
+    @JdbcTypeCode(SqlTypes.SMALLINT)
+    @Column(name = "crest_base")
+    var crestBase: Int? = null
+
+    @JdbcTypeCode(SqlTypes.SMALLINT)
+    @Column(name = "crest_detail")
+    var crestDetail: Int? = null
 }

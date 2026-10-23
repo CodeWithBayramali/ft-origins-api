@@ -104,6 +104,17 @@ class Player : BaseEntity() {
     @Column(name = "decay_updated_at", nullable = false)
     var decayUpdatedAt: Instant = Instant.now()
 
+    // Decay debt per attribute: points lost to inactivity and not yet trained back. Decay stops once an
+    // attribute owes 5, and training repays the debt twice as fast ("muscle memory").
+    @Column(name = "decay_debt_pace", nullable = false) var decayDebtPace: Int = 0
+    @Column(name = "decay_debt_shooting", nullable = false) var decayDebtShooting: Int = 0
+    @Column(name = "decay_debt_passing", nullable = false) var decayDebtPassing: Int = 0
+    @Column(name = "decay_debt_dribbling", nullable = false) var decayDebtDribbling: Int = 0
+    @Column(name = "decay_debt_defending", nullable = false) var decayDebtDefending: Int = 0
+    @Column(name = "decay_debt_physical", nullable = false) var decayDebtPhysical: Int = 0
+    @Column(name = "decay_debt_goalkeeping", nullable = false) var decayDebtGoalkeeping: Int = 0
+    @Column(name = "decay_debt_curve", nullable = false) var decayDebtCurve: Int = 0
+
     // Active timed-training session. Null = idle. Starting spends energy + sets trainingFinishesAt; the
     // gain lands only on claim (after the duration), and cancelling forfeits it. Blocks a second session
     // and (see PlayerUpkeepService) pauses energy regen while active. Matches will check this busy state.

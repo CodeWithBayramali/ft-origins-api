@@ -1,5 +1,6 @@
 package com.codewithbayramali.ftorigins.auth.dto
 
+import com.codewithbayramali.ftorigins.geo.dto.CrestDto
 import com.codewithbayramali.ftorigins.player.dto.AppearanceRequest
 import com.codewithbayramali.ftorigins.player.model.Foot
 import jakarta.validation.Valid
@@ -79,8 +80,14 @@ data class RegisterRequest(
 
     // Kit pattern (fabric design) chosen on the character screen. Only honoured when this
     // registration FOUNDS a new team; ignored when joining an existing one.
-    @field:Min(0) @field:Max(6)
+    @field:Min(0) @field:Max(13)
     val patternId: Int? = null,
+
+    // Team crest (shape, symbol, base + detail colour). Only honoured when this registration FOUNDS a
+    // new team; ignored when joining an existing one (its crest is its founder's). Optional: omitted or
+    // null founds a team without a crest — the founder can set one later (PUT /teams/mine/crest).
+    @field:Valid
+    val crest: CrestDto? = null,
 
     // Consent to JOIN the team that already covers this location instead of founding a new one.
     // Registration never joins an existing team silently: when the pinned location falls inside a

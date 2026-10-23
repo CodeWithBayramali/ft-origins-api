@@ -2,6 +2,7 @@ package com.codewithbayramali.ftorigins.player.service;
 
 import com.codewithbayramali.ftorigins.exception.BusinessException;
 import com.codewithbayramali.ftorigins.exception.NotFoundException;
+import com.codewithbayramali.ftorigins.geo.dto.CrestDto;
 import com.codewithbayramali.ftorigins.geo.model.Region;
 import com.codewithbayramali.ftorigins.geo.service.RegionService;
 import com.codewithbayramali.ftorigins.model.User;
@@ -44,8 +45,9 @@ public class PlayerService {
                                         String displayName, AppearanceRequest appearance,
                                         String teamName,
                                         Integer kitHomeId, Integer kitAwayId, Integer patternId,
+                                        CrestDto crest,
                                         boolean joinExisting) {
-        Region region = regionService.getOrCreateForLocation(latitude, longitude, teamName, kitHomeId, kitAwayId, patternId, joinExisting);
+        Region region = regionService.getOrCreateForLocation(latitude, longitude, teamName, kitHomeId, kitAwayId, patternId, crest, joinExisting);
 
         Player player = new Player();
         player.setUser(user);

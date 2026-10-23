@@ -1,15 +1,14 @@
 package com.codewithbayramali.ftorigins.player.service;
 
-import com.codewithbayramali.ftorigins.exception.BusinessException;
+import com.codewithbayramali.ftorigins.economy.model.CoinReason;
+import com.codewithbayramali.ftorigins.economy.service.CoinWallet;
 import com.codewithbayramali.ftorigins.exception.ConflictException;
 import com.codewithbayramali.ftorigins.exception.NotFoundException;
-import com.codewithbayramali.ftorigins.model.User;
 import com.codewithbayramali.ftorigins.player.dto.BootsResponse;
 import com.codewithbayramali.ftorigins.player.model.Player;
 import com.codewithbayramali.ftorigins.player.model.PlayerBoot;
 import com.codewithbayramali.ftorigins.player.repository.PlayerBootRepository;
 import com.codewithbayramali.ftorigins.player.repository.PlayerRepository;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,10 +27,13 @@ public class BootService {
 
     private final PlayerRepository playerRepository;
     private final PlayerBootRepository playerBootRepository;
+    private final CoinWallet coinWallet;
 
-    public BootService(PlayerRepository playerRepository, PlayerBootRepository playerBootRepository) {
+    public BootService(PlayerRepository playerRepository, PlayerBootRepository playerBootRepository,
+                       CoinWallet coinWallet) {
         this.playerRepository = playerRepository;
         this.playerBootRepository = playerBootRepository;
+        this.coinWallet = coinWallet;
     }
 
     @Transactional(readOnly = true)
@@ -51,13 +53,13 @@ public class BootService {
             throw new ConflictException("BOOT_ALREADY_OWNED", "You already own this boot design");
         }
 
-        int price = BootCatalog.priceOf(designId);
-        User user = player.getUser();
-        if (user.getCoins() < price) {
-            throw new BusinessException(HttpStatus.CONFLICT, "INSUFFICIENT_COINS",
-                    "Not enough coins for this boot design");
+        // Charged through the wallet: the balance is locked for the change and the purchase is in the
+        // coin ledger — so two buys at once can't both pass the check above and pay twice.
+        boolean charged = coinWallet.debit(userId, BootCatalog.priceOf(designId),
+                CoinReason.BOOT_PURCHASE, Integer.toString(designId));
+        if (!charged) {
+            throw new ConflictException("BOOT_ALREADY_OWNED", "You already own this boot design");
         }
-        user.setCoins(user.getCoins() - price);
 
         PlayerBoot boot = new PlayerBoot();
         boot.setPlayer(player);

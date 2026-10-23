@@ -73,11 +73,11 @@ app:
       max-age: 3600
 
   geo:
-    # res 9 ≈ 150-175 m cell radius, matching the team join-radius (0.15 km) so "one team per cell"
-    # lines up with the visible team circle. Coarser (res 8 ≈ 460 m) made teams balloon to ~1 km via
-    # the same-cell join. NOTE: h3_index values are resolution-specific — teams created at another
-    # resolution won't match new same-cell lookups, so change this only with an empty regions table.
-    h3-resolution: 9
+    # A team's H3 cell is only its uniqueness key (membership is the join circle, app.team.join-radius-km).
+    # res 11 (about 25 m edge) is finer than any two team anchors usually sit apart, so a new team almost
+    # always gets its own pin's cell and crowded spots still have free cells next to it. Teams filed under
+    # an older resolution keep their keys; keys of different resolutions never collide.
+    h3-resolution: 11
     # GeoNames reference data (reverse-geocode pin -> country/city labels).
     # Default path is relative to the working dir (= project root when run from IntelliJ/Gradle).
     # Override with the env var to point elsewhere (e.g. an absolute path).
@@ -95,9 +95,9 @@ app:
       language: ${NOMINATIM_LANGUAGE:en}   # place-name language; set to 'tr' for Turkish names
 
   team:
-    # Players registering within this radius (km) of an existing team's anchor join that team,
-    # instead of getting split by H3 grid boundaries. Lower = more local teams; higher = wider catchment.
-    join-radius-km: ${TEAM_JOIN_RADIUS_KM:0.15}
+    # Players registering within this radius (km) of an existing team's anchor join that team — the circle
+    # the registration map draws. Lower = more local teams; higher = wider catchment. 0.075 = about a block.
+    join-radius-km: ${TEAM_JOIN_RADIUS_KM:0.075}
     # Team capacity: full teams are skipped at join time (next-nearest in range, else a new team).
     # Matches are 6v6 (1 GK + 5 outfield), so 10 leaves a real bench for substitutions.
     max-members: ${TEAM_MAX_MEMBERS:10}

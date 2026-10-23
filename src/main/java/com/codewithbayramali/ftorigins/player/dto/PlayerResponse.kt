@@ -1,5 +1,6 @@
 package com.codewithbayramali.ftorigins.player.dto
 
+import com.codewithbayramali.ftorigins.geo.dto.CrestDto
 import com.codewithbayramali.ftorigins.player.model.Foot
 import com.codewithbayramali.ftorigins.player.model.Player
 import com.codewithbayramali.ftorigins.player.model.PlayerAppearance
@@ -39,8 +40,10 @@ data class PlayerResponse(
     /** Team kit ids into the client KitCatalog (0-9); null on pre-kit teams (client uses its default). */
     val teamKitHome: Int?,
     val teamKitAway: Int?,
-    /** Team kit pattern id (0-6); null on teams founded before patterns (client uses solid). */
-    val teamKitPattern: Int?
+    /** Team kit pattern id (0-13); null on teams founded before patterns (client uses solid). */
+    val teamKitPattern: Int?,
+    /** Team crest; null when the team has none. */
+    val teamCrest: CrestDto?
 ) {
     companion object {
         @JvmStatic
@@ -75,7 +78,8 @@ data class PlayerResponse(
                 neighborhood = player.region?.neighborhood,
                 teamKitHome = player.region?.kitHome,
                 teamKitAway = player.region?.kitAway,
-                teamKitPattern = player.region?.kitPattern
+                teamKitPattern = player.region?.kitPattern,
+                teamCrest = player.region?.let { CrestDto.from(it) }
             )
         }
     }

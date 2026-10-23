@@ -31,6 +31,18 @@ public interface MatchParticipantRepository extends JpaRepository<MatchParticipa
     /** A player appears at most once per match: no re-entry after being subbed out. */
     boolean existsByMatchIdAndPlayerId(UUID matchId, UUID playerId);
 
+    /** A person who played in a match (starter or substitute), and the side they played for. */
+    interface HumanParticipant {
+        UUID getRegionId();
+
+        UUID getUserId();
+    }
+
+    /** Everyone who played in a match — the AI fillers left out — once each, by account. */
+    @Query("select distinct mp.region.id as regionId, p.user.id as userId from MatchParticipant mp "
+            + "join mp.player p where mp.match.id = :matchId and mp.aiFill = false")
+    List<HumanParticipant> findHumanParticipants(@Param("matchId") UUID matchId);
+
     /**
      * Clears one side's slots before re-inserting a resubmitted lineup. Bulk JPQL on purpose: it
      * executes immediately, so the fresh rows can't race the old ones on the (match, region, slot)

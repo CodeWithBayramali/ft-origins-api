@@ -8,6 +8,7 @@ import com.codewithbayramali.ftorigins.player.dto.TrainResult;
 import com.codewithbayramali.ftorigins.player.dto.TrainingStatus;
 import com.codewithbayramali.ftorigins.player.model.DrillEffect;
 import com.codewithbayramali.ftorigins.player.model.Player;
+import com.codewithbayramali.ftorigins.player.model.TrainableAttribute;
 import com.codewithbayramali.ftorigins.player.model.TrainingDrill;
 import com.codewithbayramali.ftorigins.player.repository.PlayerRepository;
 import com.codewithbayramali.ftorigins.player.repository.TrainingDrillRepository;
@@ -121,14 +122,10 @@ public class TrainingService {
 
         List<AttributeChange> changes = new ArrayList<>();
         for (DrillEffect effect : drill.getEffects()) {
-            int current = AttributeAccess.read(player, effect.getAttribute());
-            if (current >= ATTRIBUTE_CAP) {
-                continue;
+            AttributeChange change = applyGain(player, effect.getAttribute(), effect.getBaseGain());
+            if (change != null) {
+                changes.add(change);
             }
-            int gain = computeGain(effect.getBaseGain(), current, ATTRIBUTE_CAP);
-            int updated = current + gain;
-            AttributeAccess.write(player, effect.getAttribute(), updated);
-            changes.add(new AttributeChange(effect.getAttribute().name(), gain, updated));
         }
 
         clearSession(player, now);
@@ -189,6 +186,25 @@ public class TrainingService {
             }
         }
         return true;
+    }
+
+    /**
+     * Trains one attribute: the diminishing-returns gain, doubled while it repays decay debt — points
+     * lost to inactivity come back twice as fast as new ones are earned ("muscle memory"). Null when
+     * the attribute is already maxed.
+     */
+    static AttributeChange applyGain(Player player, TrainableAttribute attribute, int baseGain) {
+        int current = AttributeAccess.read(player, attribute);
+        if (current >= ATTRIBUTE_CAP) {
+            return null;
+        }
+        int gain = computeGain(baseGain, current, ATTRIBUTE_CAP);
+        int debt = AttributeAccess.readDebt(player, attribute);
+        int total = Math.min(ATTRIBUTE_CAP - current, gain + Math.min(gain, debt));
+        int updated = current + total;
+        AttributeAccess.write(player, attribute, updated);
+        AttributeAccess.writeDebt(player, attribute, Math.max(0, debt - total));
+        return new AttributeChange(attribute.name(), total, updated);
     }
 
     /** Diminishing returns: gain shrinks as the attribute approaches the cap (always at least +1). */

@@ -38,6 +38,7 @@ public class MatchLiveService {
     private final LiveMatchRegistry registry;
     private final MatchRepository matchRepository;
     private final MatchEventRepository eventRepository;
+    private final MatchRewardService rewardService;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
     private final long simMinuteRealSeconds;
@@ -45,12 +46,14 @@ public class MatchLiveService {
     public MatchLiveService(LiveMatchRegistry registry,
                             MatchRepository matchRepository,
                             MatchEventRepository eventRepository,
+                            MatchRewardService rewardService,
                             ObjectMapper objectMapper,
                             TransactionTemplate transactionTemplate,
                             @Value("${app.match.sim-minute-real-seconds:8}") long simMinuteRealSeconds) {
         this.registry = registry;
         this.matchRepository = matchRepository;
         this.eventRepository = eventRepository;
+        this.rewardService = rewardService;
         this.objectMapper = objectMapper;
         this.transactionTemplate = transactionTemplate;
         this.simMinuteRealSeconds = simMinuteRealSeconds;
@@ -100,6 +103,9 @@ public class MatchLiveService {
                     if (finished) {
                         match.setStatus(MatchStatus.FINISHED);
                         match.setFinishedAt(now2);
+                        // Paid in the same transaction: a match is never FINISHED without its rewards.
+                        rewardService.payOut(match.getId(), match.getMatchType(),
+                                match.getHomeRegion().getId(), sim.homeScore(), sim.awayScore());
                     }
                 });
                 if (finished) {

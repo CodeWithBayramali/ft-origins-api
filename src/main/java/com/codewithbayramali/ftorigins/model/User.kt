@@ -43,4 +43,12 @@ class User : BaseEntity() {
 
     @Column(name = "birth_date")
     var birthDate: LocalDate? = null
+
+    // The daily reward (see DailyRewardService): the last UTC day it was claimed, and which day of
+    // the 7-day ladder that claim paid (0 = never claimed).
+    @Column(name = "daily_reward_day")
+    var dailyRewardDay: LocalDate? = null
+
+    @Column(name = "daily_reward_streak", nullable = false)
+    var dailyRewardStreak: Int = 0
 }

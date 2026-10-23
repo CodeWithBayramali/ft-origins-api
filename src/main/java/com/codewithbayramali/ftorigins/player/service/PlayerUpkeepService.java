@@ -13,8 +13,12 @@ import java.time.Instant;
  * <ul>
  *   <li><b>Energy regen</b> — the bar refills toward {@link #MAX_ENERGY} at {@link #ENERGY_REGEN_PER_HOUR}/h.</li>
  *   <li><b>Inactivity decay</b> — after {@link #DECAY_GRACE_DAYS} days without training, every attribute
- *       erodes by {@link #DECAY_PER_DAY}/day down to {@link #DECAY_FLOOR}, so recent activity (not
- *       seniority) drives the overall rating and keeps players coming back.</li>
+ *       erodes by a point every {@link #DECAY_DAYS_PER_POINT} days, down to {@link #DECAY_FLOOR} — so
+ *       recent activity (not seniority) drives the overall rating and keeps players coming back. It is
+ *       soft: an attribute stops eroding once it has lost {@link #DECAY_MAX_DEBT} points it hasn't
+ *       trained back (its decay debt), and training wins those back twice as fast (see TrainingService).
+ *       A long break costs a little, never everything — the old rule (a point a day, no limit) took 11
+ *       points off every attribute in two weeks away.</li>
  * </ul>
  * Only mutates the player when something actually changes, so an idle player's profile GET stays
  * write-free. Energy's regen clock is reset on spend by the caller, so a full bar never needs a write here.
@@ -28,7 +32,8 @@ public class PlayerUpkeepService {
 
     // Inactivity decay
     static final int DECAY_GRACE_DAYS = 3;
-    static final int DECAY_PER_DAY = 1;
+    static final int DECAY_DAYS_PER_POINT = 2;
+    static final int DECAY_MAX_DEBT = 5;
     static final int DECAY_FLOOR = 30;
 
     /** Apply energy regen + inactivity decay. Returns {@code true} if the player was mutated. */
@@ -69,32 +74,32 @@ public class PlayerUpkeepService {
 
     private boolean applyDecay(Player player, Instant now) {
         Instant graceEnd = player.getLastTrainedAt().plus(Duration.ofDays(DECAY_GRACE_DAYS));
-        // Count only whole days past the grace window that have not already been decayed.
+        // Count only whole decay periods past the grace window that have not already been applied.
         Instant start = player.getDecayUpdatedAt().isAfter(graceEnd) ? player.getDecayUpdatedAt() : graceEnd;
-        long days = Duration.between(start, now).toDays();
-        if (days <= 0) {
+        long points = Duration.between(start, now).toDays() / DECAY_DAYS_PER_POINT;
+        if (points <= 0) {
             return false;
         }
-        int drop = (int) (days * DECAY_PER_DAY);
-        boolean changed = decayAttributes(player, drop);
+        boolean changed = decayAttributes(player, (int) Math.min(points, DECAY_MAX_DEBT));
         if (changed) {
-            player.setDecayUpdatedAt(start.plus(Duration.ofDays(days)));
+            // Only the whole periods are spent: an odd idle day carries over to the next one.
+            player.setDecayUpdatedAt(start.plus(Duration.ofDays(points * DECAY_DAYS_PER_POINT)));
         }
-        // If nothing changed (already at the floor) we leave the marker untouched — recomputing a big
-        // day-count next time is cheap and still produces no write.
+        // If nothing changed (every attribute at its debt limit or the floor) we leave the marker
+        // untouched — recomputing a big period count next time is cheap and still produces no write.
         return changed;
     }
 
+    /** Takes up to {@code drop} points off each attribute — never past its debt limit or the floor. */
     private boolean decayAttributes(Player p, int drop) {
         boolean changed = false;
         for (TrainableAttribute attr : TrainableAttribute.values()) {
             int current = AttributeAccess.read(p, attr);
-            if (current <= DECAY_FLOOR) {
-                continue;
-            }
-            int next = Math.max(DECAY_FLOOR, current - drop);
-            if (next != current) {
+            int debt = AttributeAccess.readDebt(p, attr);
+            int next = Math.max(DECAY_FLOOR, current - Math.min(drop, DECAY_MAX_DEBT - debt));
+            if (next < current) {
                 AttributeAccess.write(p, attr, next);
+                AttributeAccess.writeDebt(p, attr, debt + (current - next));
                 changed = true;
             }
         }

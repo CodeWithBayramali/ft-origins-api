@@ -113,6 +113,7 @@ public class AuthService {
                 request.getKitHomeId(),
                 request.getKitAwayId(),
                 request.getPatternId(),
+                request.getCrest(),
                 Boolean.TRUE.equals(request.getJoinExisting()));
 
         return issueTokens(saved);
