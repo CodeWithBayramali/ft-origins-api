@@ -1,34 +1,135 @@
-# Moderation blocklist for public user-chosen names (team names, later player names / chat).
-# One term per line. Lines starting with '#' are comments; blank lines are ignored.
+# Moderation blocklist for public user-chosen names: team names, usernames (the name on the pitch) and
+# display names. One term per line; a line starting with '#' is a comment, blank lines are ignored.
 #
-# Terms are matched against a CANONICAL form of the name (see ProfanityFilter): TR-lowercased,
-# diacritics + leetspeak folded, non-alphanumerics dropped, repeated letters collapsed. So you do
-# NOT need to list spacing/case/leet variants — "sik", "S1K", "s.i.k", "siiik" all match "sik".
-# Matching is substring-based, which catches evasions but can over-block (the "Scunthorpe problem"):
-# avoid very short or substring-of-innocent-word terms. Curate for your audience/locale.
+# Terms are compared against a CANONICAL form of the name (see ProfanityFilter): Turkish-lowercased,
+# accents and leetspeak folded, repeated letters squashed. So list each term ONCE, plainly: "siktir"
+# already covers "S1KT1R", "s.i.k.t.i.r", "siiiktir" and "SİKTİR".
 #
-# This is a STARTER list of unambiguous terms, not a complete one. Expand it for production; the
-# file is read once at startup, so add terms and restart.
+# Two kinds of term:
+#   root   - a plain line. An unambiguous stem, caught inside a word ("Siktirgit") or spread over the
+#            words from the start of one ("oro spu").
+#   =word  - a line starting with '='. A short or ambiguous term, caught only as a WHOLE word, because it
+#            hides inside innocent words: "sik" in Işık and bisiklet, "cock" in Hitchcock, "sex" in Essex.
+# Before adding a root, make sure it is not inside a real name or place (the "Scunthorpe problem": "amkoy"
+# would block Çamköy, "rapist" therapist); if it is, add it as a =word. A double letter counts: "yarrak"
+# does not match "yarak" (kayarak), "nigger" does not match Niger.
+#
+# Deliberately left out: ethnic and national names, political terms, mild insults that are also everyday
+# words, and words that are names or common words elsewhere: "mal" (Malatya), "am" (Frankfurt am Main,
+# "I am"), "amina" (the name Amina).
+#
+# The file is read once at startup: add terms, then restart.
 
-# --- Turkish ---
-# (Deliberately NOT listing short words like "mal" or "salak": "mal" is a substring of Malatya, "sal",
-#  etc., so it would block innocent city/team names. Prefer unambiguous, longer terms.)
-amcik
+# --- Turkish: roots ---
 orospu
-yarrak
-gavat
-pezevenk
+orosbu
+oruspu
 siktir
+sikerim
+sikeyim
+sikiyim
+siktim
+siktin
+sikik
+amcik
+amcig
+aminakoy
+aminakod
+yarrak
+yarrag
+dalyarak
+dassak
+pezeven
+kahpe
+kaltak
+kancik
+yavsak
+gavat
+ibne
+gotveren
+gotlek
+kerhane
+fahise
+kevase
+surtuk
+serefsiz
 gerizekali
-amına
-amk
-sik
-# --- English ---
+vajina
+
+# --- Turkish: whole words ---
+=sik
+=sikim
+=sikis
+=amk
+=amq
+=aq
+=mk
+=oc
+=got
+=pic
+=pust
+=yarak
+=tasak
+=sakso
+=seks
+=bok
+=sktr
+=skrm
+
+# --- English: roots ---
 fuck
-shit
+phuck
 bitch
-asshole
+biatch
+# One s on purpose: repeated letters are squashed, so this also catches "asshole" and "a$$hole".
+ashole
 bastard
+whore
+slut
+pussy
+wanker
+twat
+boobs
+dickhead
+cocksucker
+bullshit
+shitty
+shithead
+cumshot
+porn
+penis
+vagina
+retarded
 nigger
+nigga
 faggot
-cunt
+tranny
+wetback
+hitler
+
+# --- English: whole words ---
+=shit
+=cunt
+=cunts
+=dick
+=dicks
+=cock
+=cocks
+=fag
+=fags
+=cum
+=sex
+=nazi
+=nazis
+=retard
+=retards
+=rapist
+=rapists
+=kike
+=spic
+=chink
+=coon
+=gook
+=dyke
+=wank
+=tits

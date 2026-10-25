@@ -7,6 +7,7 @@ import com.codewithbayramali.ftorigins.exception.BusinessException;
 import com.codewithbayramali.ftorigins.exception.ConflictException;
 import com.codewithbayramali.ftorigins.exception.UnauthorizedException;
 import com.codewithbayramali.ftorigins.model.User;
+import com.codewithbayramali.ftorigins.moderation.ProfanityFilter;
 import com.codewithbayramali.ftorigins.player.service.PlayerService;
 import com.codewithbayramali.ftorigins.repository.UserRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -35,26 +36,30 @@ public class AuthService {
     private final JwtService jwtService;
     private final StringRedisTemplate redisTemplate;
     private final PlayerService playerService;
+    private final ProfanityFilter profanityFilter;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        AuthenticationManager authenticationManager,
                        JwtService jwtService,
                        StringRedisTemplate redisTemplate,
-                       PlayerService playerService) {
+                       PlayerService playerService,
+                       ProfanityFilter profanityFilter) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.redisTemplate = redisTemplate;
         this.playerService = playerService;
+        this.profanityFilter = profanityFilter;
     }
 
     /**
-     * Pre-registration availability probe (see {@link AvailabilityRequest}). Mirrors exactly the
+     * Pre-registration availability probe (see {@link AvailabilityRequest}). Mirrors the uniqueness
      * checks {@link #register} enforces, so the wizard can reject a taken email/username on the form
-     * where it was typed instead of at the end. Purely advisory — register stays authoritative
-     * (a value can still be taken in the window between this check and the final submit).
+     * where it was typed instead of at the end. (Not the profanity screen: the username is typed on the
+     * last step, where register itself reports a rejected one.) Purely advisory — register stays
+     * authoritative (a value can still be taken in the window between this check and the final submit).
      */
     @Transactional(readOnly = true)
     public AvailabilityResponse checkAvailability(AvailabilityRequest request) {
@@ -67,6 +72,12 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        // The username is the player's name above their character in every match: screened like a
+        // team name, before any lookup.
+        if (profanityFilter.isProfane(request.getUsername())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "USERNAME_REJECTED",
+                    "This player name isn't allowed");
+        }
         if (userRepository.existsByUsernameIgnoreCase(request.getUsername())) {
             throw new ConflictException("USERNAME_TAKEN", "Username is already taken");
         }

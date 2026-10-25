@@ -6,6 +6,7 @@ import com.codewithbayramali.ftorigins.geo.dto.CrestDto;
 import com.codewithbayramali.ftorigins.geo.model.Region;
 import com.codewithbayramali.ftorigins.geo.service.RegionService;
 import com.codewithbayramali.ftorigins.model.User;
+import com.codewithbayramali.ftorigins.moderation.ProfanityFilter;
 import com.codewithbayramali.ftorigins.player.dto.AppearanceRequest;
 import com.codewithbayramali.ftorigins.player.dto.PlayerResponse;
 import com.codewithbayramali.ftorigins.player.dto.UpdatePlayerRequest;
@@ -26,12 +27,14 @@ public class PlayerService {
     private final PlayerRepository playerRepository;
     private final RegionService regionService;
     private final PlayerUpkeepService upkeep;
+    private final ProfanityFilter profanityFilter;
 
     public PlayerService(PlayerRepository playerRepository, RegionService regionService,
-                         PlayerUpkeepService upkeep) {
+                         PlayerUpkeepService upkeep, ProfanityFilter profanityFilter) {
         this.playerRepository = playerRepository;
         this.regionService = regionService;
         this.upkeep = upkeep;
+        this.profanityFilter = profanityFilter;
     }
 
     /**
@@ -47,6 +50,8 @@ public class PlayerService {
                                         Integer kitHomeId, Integer kitAwayId, Integer patternId,
                                         CrestDto crest,
                                         boolean joinExisting) {
+        // Before the region lookup, so a rejected name costs no reverse-geocode call.
+        String name = cleanDisplayName(displayName);
         Region region = regionService.getOrCreateForLocation(latitude, longitude, teamName, kitHomeId, kitAwayId, patternId, crest, joinExisting);
 
         Player player = new Player();
@@ -56,7 +61,7 @@ public class PlayerService {
         player.setHomeLng(longitude);
         player.setH3Index(region.getH3Index());
         player.setPreferredFoot(preferredFoot != null ? preferredFoot : Foot.RIGHT);
-        player.setDisplayName(displayName != null && !displayName.isBlank() ? displayName.trim() : user.getUsername());
+        player.setDisplayName(name != null ? name : user.getUsername());
         if (appearance != null) {
             applyAppearance(player, appearance);
         }
@@ -99,8 +104,9 @@ public class PlayerService {
         Player player = playerRepository.findByUserId(userId)
                 .orElseThrow(() -> new NotFoundException("PLAYER_NOT_FOUND", "No player profile for this account"));
 
-        if (request.getDisplayName() != null && !request.getDisplayName().isBlank()) {
-            player.setDisplayName(request.getDisplayName().trim());
+        String name = cleanDisplayName(request.getDisplayName());
+        if (name != null) {
+            player.setDisplayName(name);
         }
         if (request.getPreferredFoot() != null) {
             player.setPreferredFoot(request.getPreferredFoot());
@@ -111,6 +117,20 @@ public class PlayerService {
 
         playerRepository.save(player);
         return PlayerResponse.from(player);
+    }
+
+    /** The display name the player typed, trimmed; null when none was given. Shown to other players, so
+     *  it is screened like the username and the team name. */
+    private String cleanDisplayName(String displayName) {
+        if (displayName == null || displayName.isBlank()) {
+            return null;
+        }
+        String name = displayName.trim();
+        if (profanityFilter.isProfane(name)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DISPLAY_NAME_REJECTED",
+                    "This display name isn't allowed");
+        }
+        return name;
     }
 
     private void applyAppearance(Player player, AppearanceRequest source) {
