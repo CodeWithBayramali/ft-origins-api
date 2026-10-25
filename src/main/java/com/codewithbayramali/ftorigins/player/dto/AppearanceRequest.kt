@@ -16,6 +16,6 @@ data class AppearanceRequest(
     @field:Min(0) val hairColorId: Int? = null,
     @field:Min(0) val beardId: Int? = null,
     @field:Min(1) @field:Max(99) val kitNumber: Int? = null,
-    @field:Min(150) @field:Max(210) val heightCm: Int? = null,
+    @field:Min(150) @field:Max(190) val heightCm: Int? = null,
     @field:Min(40) @field:Max(150) val weightKg: Int? = null
 )

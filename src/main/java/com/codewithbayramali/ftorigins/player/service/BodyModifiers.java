@@ -16,7 +16,7 @@ public final class BodyModifiers {
     /** Reference values that yield zero modifier; deviations from them scale the effect. */
     public static final int REFERENCE_HEIGHT_CM = 178;
     public static final int MIN_HEIGHT_CM = 150;
-    public static final int MAX_HEIGHT_CM = 210;
+    public static final int MAX_HEIGHT_CM = 190;
 
     public static final int REFERENCE_WEIGHT_KG = 75;
     public static final int MIN_WEIGHT_KG = 40;
